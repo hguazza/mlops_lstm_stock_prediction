@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  quality-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+          python-version: "3.12" # Let the action install Python for you
+
+      - name: Install dependencies
+        # --frozen ensures the CI fails if uv.lock is out of sync with pyproject.toml
+        run: uv sync --all-extras --dev --frozen
+
+      - name: Check Formatting
+        # Checks if code is formatted (e.g., imports sorted, black style) without modifying it
+        run: uv run ruff format --check .
+
+      - name: Lint Code
+        run: uv run ruff check .
+
+      - name: Run Tests
+        run: uv run pytest
