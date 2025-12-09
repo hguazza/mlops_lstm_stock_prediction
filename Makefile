@@ -14,8 +14,17 @@ install: ## Install dependencies
 run: ## Run the main application
 	$(PYTHON) src/mlops_stock_prediction/main.py
 
-test: ## Run tests
+test: ## Run all tests
 	$(PYTHON) pytest
+
+test-unit: ## Run unit tests only
+	$(PYTHON) pytest tests/unit -v
+
+test-fast: ## Run tests excluding slow ones
+	$(PYTHON) pytest -m "not slow" -v
+
+test-coverage: ## Run tests with coverage report
+	$(PYTHON) pytest --cov=src --cov-report=term-missing --cov-report=html
 
 check: ## Run linter checks only
 	$(PYTHON) ruff check .
