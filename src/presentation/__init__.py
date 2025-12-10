@@ -1,1 +1,1 @@
-"""Presentation layer - API and user interfaces."""
+"""Presentation layer - FastAPI REST API."""

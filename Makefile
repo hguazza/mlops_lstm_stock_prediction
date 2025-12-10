@@ -46,3 +46,9 @@ pre-commit-install: ## Install pre-commit hooks
 
 pre-commit-run: ## Run pre-commit hooks on all files
 	$(PYTHON) pre-commit run --all-files
+
+run-api: ## Run FastAPI development server
+	$(PYTHON) uvicorn src.presentation.main:app --reload --host 0.0.0.0 --port 8000
+
+run-api-prod: ## Run FastAPI production server
+	$(PYTHON) uvicorn src.presentation.main:app --host 0.0.0.0 --port 8000 --workers 4
