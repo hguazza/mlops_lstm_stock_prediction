@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stock-prediction-api-dev
+    ports:
+      - "8000:8000"
+    environment:
+      - MLFLOW_TRACKING_URI=sqlite:///data/mlflow.db
+      - MLFLOW_ARTIFACT_LOCATION=/data/mlruns_artifacts
+      - PYTHONUNBUFFERED=1
+      - API_RELOAD=true
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - .:/app
+      - /app/.venv  # Don't overwrite venv
+      - mlflow-data:/data
+    command: ["uvicorn", "src.presentation.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
+    restart: unless-stopped
+    networks:
+      - stock-prediction-network
+
+  mlflow-ui:
+    image: python:3.12-slim
+    container_name: mlflow-ui-dev
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=sqlite:///data/mlflow.db
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/data/mlruns_artifacts
+    volumes:
+      - mlflow-data:/data
+    command: >
+      sh -c "pip install mlflow &&
+             mlflow server
+             --backend-store-uri sqlite:///data/mlflow.db
+             --default-artifact-root /data/mlruns_artifacts
+             --host 0.0.0.0
+             --port 5000"
+    restart: unless-stopped
+    networks:
+      - stock-prediction-network
+    depends_on:
+      - api
+
+volumes:
+  mlflow-data:
+    driver: local
+
+networks:
+  stock-prediction-network:
+    driver: bridge

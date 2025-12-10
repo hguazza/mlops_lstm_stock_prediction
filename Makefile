@@ -52,3 +52,25 @@ run-api: ## Run FastAPI development server
 
 run-api-prod: ## Run FastAPI production server
 	$(PYTHON) uvicorn src.presentation.main:app --host 0.0.0.0 --port 8000 --workers 4
+
+docker-build: ## Build Docker image
+	docker build -t stock-prediction-api:latest .
+
+docker-run: ## Run with docker-compose
+	docker-compose up -d
+
+docker-dev: ## Run with docker-compose in development mode
+	docker-compose -f docker-compose.dev.yml up -d
+
+docker-stop: ## Stop docker-compose services
+	docker-compose down
+
+docker-logs: ## View docker-compose logs
+	docker-compose logs -f
+
+docker-clean: ## Remove containers, volumes, and images
+	docker-compose down -v
+	docker rmi stock-prediction-api:latest || true
+
+docker-ps: ## Show running containers
+	docker-compose ps
