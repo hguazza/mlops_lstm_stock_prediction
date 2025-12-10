@@ -3,7 +3,7 @@
 import json
 import pickle
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -235,6 +235,7 @@ class LSTMStockPredictor:
         data: pd.DataFrame,
         target_column: str = "Close",
         verbose: bool = True,
+        epoch_callback: Optional[Callable] = None,
     ) -> dict:
         """
         Train the LSTM model on stock data.
@@ -243,11 +244,20 @@ class LSTMStockPredictor:
             data: DataFrame with stock prices
             target_column: Column to predict (default: 'Close')
             verbose: Print training progress
+            epoch_callback: Optional callback function called after each epoch
+                           with signature: callback(epoch, train_loss, val_loss)
 
         Returns:
             Training history dictionary
         """
         self.logger.info("starting_training", data_shape=data.shape)
+
+        # Call callback with training start event
+        if epoch_callback:
+            try:
+                epoch_callback(event="start", epoch=0, train_loss=0.0, val_loss=0.0)
+            except Exception as e:
+                self.logger.warning("callback_failed", event="start", error=str(e))
 
         # Extract and normalize data
         prices = data[target_column].values.reshape(-1, 1)
@@ -315,6 +325,20 @@ class LSTMStockPredictor:
             self.training_history["train_loss"].append(avg_train_loss)
             self.training_history["val_loss"].append(val_loss)
 
+            # Call epoch callback if provided
+            if epoch_callback:
+                try:
+                    epoch_callback(
+                        event="epoch",
+                        epoch=epoch + 1,
+                        train_loss=avg_train_loss,
+                        val_loss=val_loss,
+                    )
+                except Exception as e:
+                    self.logger.warning(
+                        "callback_failed", epoch=epoch + 1, error=str(e)
+                    )
+
             # Early stopping check
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
@@ -348,6 +372,19 @@ class LSTMStockPredictor:
 
         self.is_fitted = True
         self.logger.info("training_completed", best_val_loss=best_val_loss)
+
+        # Call callback with training end event
+        if epoch_callback:
+            try:
+                epoch_callback(
+                    event="end",
+                    epoch=len(self.training_history["train_loss"]),
+                    train_loss=self.training_history["train_loss"][-1],
+                    val_loss=self.training_history["val_loss"][-1],
+                    best_val_loss=best_val_loss,
+                )
+            except Exception as e:
+                self.logger.warning("callback_failed", event="end", error=str(e))
 
         return self.training_history
 

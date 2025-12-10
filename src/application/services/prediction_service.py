@@ -1,13 +1,16 @@
 """Prediction service - Orchestrates model training and prediction."""
 
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 import pandas as pd
 import structlog
 
 from src.infrastructure.model import ModelConfig
 from src.infrastructure.model.lstm_model import LSTMStockPredictor
+
+if TYPE_CHECKING:
+    from src.infrastructure.mlflow.mlflow_service import MLflowService
 
 logger = structlog.get_logger(__name__)
 
@@ -36,6 +39,7 @@ class PredictionService:
         self,
         model: Optional[LSTMStockPredictor] = None,
         config: Optional[ModelConfig] = None,
+        mlflow_service: Optional["MLflowService"] = None,
     ):
         """
         Initialize prediction service.
@@ -43,9 +47,11 @@ class PredictionService:
         Args:
             model: LSTMStockPredictor instance (creates default if None)
             config: Model configuration (uses defaults if None)
+            mlflow_service: Optional MLflow service for experiment tracking
         """
         self.config = config or ModelConfig()
         self.model = model or LSTMStockPredictor(config=self.config)
+        self.mlflow_service = mlflow_service
         self.logger = logger.bind(component="PredictionService")
         self._model_metadata: Dict = {}
 
@@ -54,6 +60,7 @@ class PredictionService:
         data: pd.DataFrame,
         target_column: str = "Close",
         verbose: bool = False,
+        symbol: Optional[str] = None,
     ) -> Dict:
         """
         Train LSTM model on stock data.
@@ -62,6 +69,7 @@ class PredictionService:
             data: DataFrame with stock prices
             target_column: Column to predict (default: 'Close')
             verbose: Whether to print training progress
+            symbol: Stock symbol for MLflow tagging (optional)
 
         Returns:
             Training history dictionary
@@ -73,11 +81,57 @@ class PredictionService:
             "starting_model_training",
             data_shape=data.shape,
             target_column=target_column,
+            mlflow_enabled=self.mlflow_service is not None,
         )
 
+        # Start MLflow run if service is available
+        if self.mlflow_service:
+            try:
+                run_name = (
+                    f"lstm_{symbol}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+                    if symbol
+                    else None
+                )
+                tags = {
+                    "model_type": "LSTM",
+                    "framework": "PyTorch",
+                    "target_column": target_column,
+                }
+                if symbol:
+                    tags["symbol"] = symbol
+
+                self.mlflow_service.start_run(run_name=run_name, tags=tags)
+                self.mlflow_service.log_params(self.config.to_dict())
+                self.logger.info("mlflow_tracking_started", run_name=run_name)
+            except Exception as e:
+                self.logger.warning("mlflow_start_failed", error=str(e))
+
         try:
+            # Create MLflow callback for epoch metrics
+            def mlflow_callback(**kwargs):
+                if not self.mlflow_service:
+                    return
+
+                event = kwargs.get("event")
+                if event == "epoch":
+                    epoch = kwargs.get("epoch", 0)
+                    train_loss = kwargs.get("train_loss", 0.0)
+                    val_loss = kwargs.get("val_loss", 0.0)
+
+                    self.mlflow_service.log_metrics(
+                        {
+                            "train_loss": train_loss,
+                            "val_loss": val_loss,
+                        },
+                        step=epoch,
+                    )
+
+            # Train model with callback
             history = self.model.train(
-                data=data, target_column=target_column, verbose=verbose
+                data=data,
+                target_column=target_column,
+                verbose=verbose,
+                epoch_callback=mlflow_callback if self.mlflow_service else None,
             )
 
             # Update metadata
@@ -92,6 +146,81 @@ class PredictionService:
                 "epochs_trained": len(history["train_loss"]),
             }
 
+            # Log final metrics and model to MLflow
+            if self.mlflow_service:
+                try:
+                    # Log final aggregated metrics
+                    self.mlflow_service.log_metrics(
+                        {
+                            "best_val_loss": min(history["val_loss"]),
+                            "final_train_loss": history["train_loss"][-1],
+                            "final_val_loss": history["val_loss"][-1],
+                            "epochs_trained": len(history["train_loss"]),
+                            "data_rows": len(data),
+                        }
+                    )
+
+                    # Prepare sample data for signature inference
+                    sample_size = min(100, len(data))
+                    sample_data = (
+                        data[target_column].values[-sample_size:].reshape(-1, 1)
+                    )
+                    sample_input = sample_data[: self.config.sequence_length].reshape(
+                        1, self.config.sequence_length, 1
+                    )
+
+                    # Make a sample prediction for signature
+                    self.model.model.eval()
+                    import torch
+
+                    with torch.no_grad():
+                        sample_output = (
+                            self.model.model(
+                                torch.FloatTensor(sample_input).to(self.model.device)
+                            )
+                            .cpu()
+                            .numpy()
+                        )
+
+                    # Infer signature
+                    signature = self.mlflow_service.infer_signature(
+                        sample_input.reshape(1, -1),  # Flatten for signature
+                        sample_output,
+                    )
+
+                    # Log model with signature
+                    registered_model_name = None
+                    if symbol:
+                        registered_model_name = f"stock_predictor_{symbol}"
+                    elif self.mlflow_service.config.registered_model_name:
+                        registered_model_name = (
+                            self.mlflow_service.config.registered_model_name
+                        )
+
+                    model_uri = self.mlflow_service.log_model(
+                        model=self.model.model,
+                        artifact_path="model",
+                        signature=signature,
+                        input_example=sample_input.reshape(1, -1),
+                        registered_model_name=registered_model_name,
+                    )
+
+                    self.logger.info(
+                        "model_logged_to_mlflow",
+                        model_uri=model_uri,
+                        registered_model_name=registered_model_name,
+                    )
+
+                    # End run successfully
+                    self.mlflow_service.end_run(status="FINISHED")
+                except Exception as e:
+                    self.logger.warning("mlflow_logging_failed", error=str(e))
+                    if self.mlflow_service:
+                        try:
+                            self.mlflow_service.end_run(status="FAILED")
+                        except Exception:
+                            pass
+
             self.logger.info(
                 "model_training_completed",
                 epochs=len(history["train_loss"]),
@@ -101,6 +230,13 @@ class PredictionService:
             return history
 
         except Exception as e:
+            # End MLflow run with failure status
+            if self.mlflow_service:
+                try:
+                    self.mlflow_service.end_run(status="FAILED")
+                except Exception:
+                    pass
+
             self.logger.error(
                 "model_training_failed",
                 error=str(e),

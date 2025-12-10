@@ -8,3 +8,15 @@ wheels/
 
 # Virtual environments
 .venv
+
+# MLflow
+mlflow.db
+mlflow.db-journal
+mlruns/
+mlruns_artifacts/
+.mlflow/
+
+# Test coverage
+htmlcov/
+.coverage
+.pytest_cache/
