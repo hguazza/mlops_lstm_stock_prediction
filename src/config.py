@@ -8,9 +8,9 @@ from dataclasses import dataclass
 class MLflowSettings:
     """MLflow-specific settings."""
 
-    tracking_uri: str = "sqlite:///mlflow.db"
+    tracking_uri: str = "sqlite:////data/mlflow.db"
     experiment_name: str = "stock_prediction_lstm"
-    artifact_location: str = "./mlruns_artifacts"
+    artifact_location: str = "/data/mlruns_artifacts"
     enable_autolog: bool = True
     registered_model_prefix: str = "stock_predictor"
 

@@ -1,7 +1,7 @@
 """Prediction router - Model prediction endpoints."""
 
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import structlog
 from fastapi import APIRouter, Depends
@@ -64,26 +64,36 @@ async def predict_price(
         # In a future enhancement, we can load specific versions from MLflow Registry
         result = use_case.execute(
             symbol=request.symbol,
-            period="60d",  # Use minimum required data for prediction
-            train_new_model=False,  # Use existing model
+            periods=60,  # Fixed: use 'periods' (plural) with int value for 60 days
+            include_confidence=True,
         )
 
-        # Extract prediction data
-        predicted_price = result["predicted_price"]
-        confidence_interval = result.get("confidence_interval", {})
-        current_price = result.get("current_price")
-        historical_prices = result.get("historical_prices", [])
+        # Extract prediction data from PredictionResponse model
+        predicted_price = result.predicted_price
+        confidence_interval = (
+            result.confidence_interval
+            if hasattr(result, "confidence_interval")
+            else None
+        )
+        historical_prices = (
+            result.historical_prices if hasattr(result, "historical_prices") else []
+        )
+        current_price = historical_prices[-1] if historical_prices else None
 
         # Build response
         prediction = PredictionDetails(
             symbol=request.symbol,
             predicted_price=predicted_price,
             confidence_interval=ConfidenceInterval(
-                lower=confidence_interval.get("lower", predicted_price * 0.95),
-                upper=confidence_interval.get("upper", predicted_price * 1.05),
+                lower=confidence_interval[0]
+                if confidence_interval and len(confidence_interval) >= 2
+                else predicted_price * 0.95,
+                upper=confidence_interval[1]
+                if confidence_interval and len(confidence_interval) >= 2
+                else predicted_price * 1.05,
                 confidence_level=0.95,
             ),
-            prediction_date=(datetime.utcnow() + timedelta(days=1)).strftime(
+            prediction_date=(datetime.now(timezone.utc) + timedelta(days=1)).strftime(
                 "%Y-%m-%d"
             ),
             current_price=current_price,
@@ -92,7 +102,7 @@ async def predict_price(
         model_info = ModelInfo(
             model_id=f"stock_predictor_{request.symbol}:{request.model_version}",
             symbol=request.symbol,
-            trained_at=datetime.utcnow(),  # Would come from model metadata
+            trained_at=datetime.now(timezone.utc),  # Would come from model metadata
             data_rows=len(historical_prices),
             config=use_case.prediction_service.config.to_dict(),
             model_stage="Production",
@@ -163,6 +173,22 @@ async def train_and_predict(
 
     start_time = time.time()
 
+    # Convert period string to number of days
+    period_days_map = {
+        "1d": 1,
+        "5d": 5,
+        "1mo": 30,
+        "3mo": 90,
+        "6mo": 180,
+        "1y": 365,
+        "2y": 730,
+        "5y": 1825,
+        "10y": 3650,
+        "ytd": 365,
+        "max": 1825,
+    }
+    periods_days = period_days_map.get(request.period, 365)
+
     try:
         # Apply config overrides if provided
         if request.config:
@@ -196,11 +222,14 @@ async def train_and_predict(
         # Execute complete pipeline
         result = use_case.execute(
             symbol=request.symbol,
-            period=request.period,
-            train_new_model=True,
+            periods=periods_days,  # Fixed: use 'periods' (plural) and pass days as int
+            include_confidence=True,
         )
 
         training_time = time.time() - start_time
+
+        # Get training metrics from model_info
+        model_info_dict = use_case.prediction_service.get_model_info()
 
         # Get MLflow run ID
         mlflow_run_id = None
@@ -212,38 +241,49 @@ async def train_and_predict(
         # Build response
         model_id = f"stock_predictor_{request.symbol}:latest"
 
+        # Extract training metrics from model_info metadata
+        metadata = model_info_dict.get("metadata", {})
         training_metrics = TrainingMetrics(
-            best_val_loss=result.get("best_val_loss", 0.0),
-            final_train_loss=result.get("final_train_loss", 0.0),
-            final_val_loss=result.get("final_val_loss", 0.0),
-            epochs_trained=result.get("epochs_trained", 0),
+            best_val_loss=metadata.get("best_val_loss", 0.0),
+            final_train_loss=metadata.get("final_train_loss", 0.0),
+            final_val_loss=metadata.get("final_val_loss", 0.0),
+            epochs_trained=metadata.get("epochs_trained", 0),
             training_time_seconds=training_time,
         )
 
-        confidence_interval_data = result.get("confidence_interval", {})
+        # Extract prediction data from PredictionResponse model
+        confidence_interval = (
+            result.confidence_interval
+            if hasattr(result, "confidence_interval")
+            else None
+        )
         prediction = PredictionDetails(
             symbol=request.symbol,
-            predicted_price=result["predicted_price"],
+            predicted_price=result.predicted_price,
             confidence_interval=ConfidenceInterval(
-                lower=confidence_interval_data.get(
-                    "lower", result["predicted_price"] * 0.95
-                ),
-                upper=confidence_interval_data.get(
-                    "upper", result["predicted_price"] * 1.05
-                ),
+                lower=confidence_interval[0]
+                if confidence_interval and len(confidence_interval) >= 2
+                else result.predicted_price * 0.95,
+                upper=confidence_interval[1]
+                if confidence_interval and len(confidence_interval) >= 2
+                else result.predicted_price * 1.05,
                 confidence_level=0.95,
             ),
             prediction_date=(datetime.utcnow() + timedelta(days=1)).strftime(
                 "%Y-%m-%d"
             ),
-            current_price=result.get("current_price"),
+            current_price=result.historical_prices[-1]
+            if hasattr(result, "historical_prices") and result.historical_prices
+            else None,
         )
 
         model_info = ModelInfo(
             model_id=model_id,
             symbol=request.symbol,
             trained_at=datetime.utcnow(),
-            data_rows=len(result.get("historical_prices", [])),
+            data_rows=len(result.historical_prices)
+            if hasattr(result, "historical_prices")
+            else 0,
             config=use_case.prediction_service.config.to_dict(),
             mlflow_run_id=mlflow_run_id,
         )

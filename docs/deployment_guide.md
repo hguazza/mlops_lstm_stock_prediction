@@ -118,6 +118,7 @@ After starting with docker-compose:
 - **API:** http://localhost:8000
 - **API Documentation:** http://localhost:8000/docs
 - **MLflow UI:** http://localhost:5000
+-   *Dev compose binds MLflow UI to 0.0.0.0 with allowed hosts/CORS open; if you override the command, keep `--host 0.0.0.0 --allowed-hosts 0.0.0.0,127.0.0.1,localhost --cors-allowed-origins '*'` so the UI is reachable from the host.*
 - **Prometheus Metrics:** http://localhost:8000/metrics
 - **Health Check:** http://localhost:8000/api/v1/health
 

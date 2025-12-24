@@ -41,11 +41,16 @@ COPY --from=builder /app/.venv /app/.venv
 # Copy application code
 COPY --chown=appuser:appuser . .
 
-# Create data directory for MLflow
+# Create data directories for MLflow with proper permissions
 RUN mkdir -p /data && chown appuser:appuser /data
+RUN mkdir -p /app/mlruns_artifacts && chown appuser:appuser /app/mlruns_artifacts
 
-# Switch to non-root user
-USER appuser
+# Copy and make entrypoint executable
+COPY scripts/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+# Note: Running as root for Docker volume permissions
+# USER appuser
 
 # Expose API port
 EXPOSE 8000
@@ -58,6 +63,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     MLFLOW_TRACKING_URI=sqlite:///data/mlflow.db
+
+# Set entrypoint
+ENTRYPOINT ["/docker-entrypoint.sh"]
 
 # Run API with uvicorn
 CMD ["uvicorn", "src.presentation.main:app", "--host", "0.0.0.0", "--port", "8000"]

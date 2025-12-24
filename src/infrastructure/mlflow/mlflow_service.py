@@ -41,6 +41,7 @@ class MLflowService:
         self._experiment_id: Optional[str] = None
         self._active_run = None
         self._setup_complete = False
+        self._last_run_id: Optional[str] = None
 
     def setup_tracking(self) -> None:
         """
@@ -131,6 +132,9 @@ class MLflowService:
                 experiment_id=self._experiment_id, run_name=run_name
             )
 
+            # Store the run_id for later access
+            self._last_run_id = self._active_run.info.run_id
+
             if tags:
                 mlflow.set_tags(tags)
 
@@ -138,6 +142,7 @@ class MLflowService:
                 "mlflow_run_started",
                 run_id=self._active_run.info.run_id,
                 run_name=run_name,
+                experiment_id=self._experiment_id,
             )
 
         except Exception as e:
@@ -260,6 +265,7 @@ class MLflowService:
             raise MLflowServiceError("No active run. Call start_run() first.")
 
         try:
+            self.logger.info("starting_model_logging", artifact_path=artifact_path)
             model_info = mlflow.pytorch.log_model(
                 pytorch_model=model,
                 artifact_path=artifact_path,
@@ -368,6 +374,17 @@ class MLflowService:
         if self._active_run is None:
             return None
         return self._active_run.info
+
+    def get_last_run_id(self) -> Optional[str]:
+        """
+        Get the run_id of the last run that was started.
+
+        This persists even after the run is ended, unlike get_run_info().
+
+        Returns:
+            Last run_id or None if no run was started
+        """
+        return self._last_run_id
 
     def end_run(self, status: str = "FINISHED") -> None:
         """

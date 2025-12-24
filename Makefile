@@ -74,3 +74,74 @@ docker-clean: ## Remove containers, volumes, and images
 
 docker-ps: ## Show running containers
 	docker-compose ps
+
+# ====================
+# Production Commands
+# ====================
+
+prod-build: ## Build Docker image for production
+	docker-compose -f docker-compose.prod.yml build
+
+prod-up: ## Start production services (PostgreSQL + MLflow + API)
+	docker-compose -f docker-compose.prod.yml --env-file .env.production up -d
+
+prod-down: ## Stop production services
+	docker-compose -f docker-compose.prod.yml down
+
+prod-restart: ## Restart production services
+	docker-compose -f docker-compose.prod.yml restart
+
+prod-logs: ## View production logs
+	docker-compose -f docker-compose.prod.yml logs -f
+
+prod-logs-api: ## View API logs only
+	docker-compose -f docker-compose.prod.yml logs -f api
+
+prod-logs-mlflow: ## View MLflow logs only
+	docker-compose -f docker-compose.prod.yml logs -f mlflow-server
+
+prod-status: ## Check status of production services
+	docker-compose -f docker-compose.prod.yml ps
+
+prod-clean: ## Clean production volumes (WARNING: deletes data!)
+	docker-compose -f docker-compose.prod.yml down -v
+
+prod-backup-db: ## Backup PostgreSQL database
+	docker exec mlflow-postgres pg_dump -U mlflow mlflow > backup_$(shell date +%Y%m%d_%H%M%S).sql
+
+prod-restore-db: ## Restore PostgreSQL database (usage: make prod-restore-db BACKUP_FILE=backup.sql)
+	docker exec -i mlflow-postgres psql -U mlflow mlflow < $(BACKUP_FILE)
+
+prod-health: ## Check health of all production services
+	@echo "Checking API health..."
+	@curl -s http://localhost:8000/api/v1/health | python -m json.tool || echo "❌ API is down"
+	@echo "\nChecking MLflow health..."
+	@curl -s http://localhost:5000/health | python -m json.tool || echo "❌ MLflow is down"
+	@echo "\nChecking PostgreSQL health..."
+	@docker exec mlflow-postgres pg_isready -U mlflow && echo "✅ PostgreSQL is healthy" || echo "❌ PostgreSQL is down"
+
+prod-test-train: ## Test training in production environment
+	curl -X POST http://localhost:8000/api/v1/train \
+		-H "Content-Type: application/json" \
+		-d '{"symbol": "AAPL", "period": "1y", "config": {"epochs": 50}}'
+
+prod-test-predict: ## Test prediction in production environment
+	curl -X POST http://localhost:8000/api/v1/predict \
+		-H "Content-Type: application/json" \
+		-d '{"symbol": "AAPL", "model_version": "latest"}'
+
+prod-list-models: ## List all registered models
+	curl -s http://localhost:8000/api/v1/models | python -m json.tool
+
+# ====================
+# Monitoring & Debugging
+# ====================
+
+monitor-resources: ## Monitor Docker resource usage
+	docker stats
+
+db-shell: ## Open PostgreSQL shell
+	docker exec -it mlflow-postgres psql -U mlflow mlflow
+
+api-shell: ## Open API container shell
+	docker exec -it stock-prediction-api /bin/bash

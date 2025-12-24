@@ -1,6 +1,6 @@
 """Health check router."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import structlog
 from fastapi import APIRouter
@@ -56,6 +56,6 @@ async def health_check() -> HealthResponse:
 
     return HealthResponse(
         status=overall_status,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         dependencies=dependencies,
     )

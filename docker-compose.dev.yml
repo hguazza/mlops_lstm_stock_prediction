@@ -39,7 +39,9 @@ services:
              --backend-store-uri sqlite:///data/mlflow.db
              --default-artifact-root /data/mlruns_artifacts
              --host 0.0.0.0
-             --port 5000"
+             --port 5000
+             --allowed-hosts 0.0.0.0,127.0.0.1,localhost
+             --cors-allowed-origins '*'"
     restart: unless-stopped
     networks:
       - stock-prediction-network

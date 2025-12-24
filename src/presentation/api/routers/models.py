@@ -60,13 +60,13 @@ async def list_models(
                 versions, key=lambda v: int(v.version), reverse=True
             )
 
-            latest_version = sorted_versions[0].version
+            latest_version = str(sorted_versions[0].version)
 
             # Find production version
             production_version = None
             for v in sorted_versions:
                 if v.current_stage == "Production":
-                    production_version = v.version
+                    production_version = str(v.version)
                     break
 
             # Get last trained timestamp

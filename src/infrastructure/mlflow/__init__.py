@@ -18,9 +18,9 @@ class MLflowConfig:
         registered_model_name: Name for model registry (None = auto-generate)
     """
 
-    tracking_uri: str = "sqlite:///mlflow.db"
+    tracking_uri: str = "sqlite:////data/mlflow.db"
     experiment_name: str = "stock_prediction_lstm"
-    artifact_location: str = "./mlruns_artifacts"
+    artifact_location: str = "/data/mlruns_artifacts"
     enable_autolog: bool = True
     log_model_signature: bool = True
     registered_model_name: Optional[str] = None

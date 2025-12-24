@@ -41,11 +41,20 @@ def create_prediction_service_with_mlflow(
     Returns:
         Configured PredictionService with MLflow tracking enabled
     """
-    # Create MLflow configuration
-    config = mlflow_config or MLflowConfig()
+    # Create MLflow configuration from environment variables if not provided
+    if mlflow_config is None:
+        from src.config import get_config
+
+        app_config = get_config()
+        mlflow_config = MLflowConfig(
+            tracking_uri=app_config.mlflow.tracking_uri,
+            experiment_name=app_config.mlflow.experiment_name,
+            artifact_location=app_config.mlflow.artifact_location,
+            enable_autolog=app_config.mlflow.enable_autolog,
+        )
 
     # Create and setup MLflow service
-    mlflow_service = MLflowService(config=config)
+    mlflow_service = MLflowService(config=mlflow_config)
     mlflow_service.setup_tracking()
 
     # Create prediction service with MLflow

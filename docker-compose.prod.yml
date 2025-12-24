@@ -1,0 +1,99 @@
+version: "3.8"
+
+services:
+  # PostgreSQL database for MLflow
+  postgres:
+    image: postgres:15-alpine
+    container_name: mlflow-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mlflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mlflow_password}
+      POSTGRES_DB: ${POSTGRES_DB:-mlflow}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mlflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - stock-prediction-network
+
+  # MLflow Tracking Server (separate from API)
+  mlflow-server:
+    image: python:3.12-slim
+    container_name: mlflow-server
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=postgresql://${POSTGRES_USER:-mlflow}:${POSTGRES_PASSWORD:-mlflow_password}@postgres:5432/${POSTGRES_DB:-mlflow}
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
+      - MLFLOW_ALLOWED_HOSTS=${MLFLOW_ALLOWED_HOSTS:-*}
+    volumes:
+      - mlflow-artifacts:/mlflow/artifacts
+    command: >
+      sh -c "
+      apt-get update && apt-get install -y postgresql-client &&
+      pip install mlflow psycopg2-binary &&
+      mlflow server
+      --backend-store-uri postgresql://${POSTGRES_USER:-mlflow}:${POSTGRES_PASSWORD:-mlflow_password}@postgres:5432/${POSTGRES_DB:-mlflow}
+      --default-artifact-root /mlflow/artifacts
+      --host 0.0.0.0
+      --port 5000
+      --serve-artifacts
+      "
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - stock-prediction-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Stock Prediction API
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stock-prediction-api
+    ports:
+      - "8000:8000"
+    environment:
+      # Use PostgreSQL instead of SQLite
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+      - MLFLOW_ARTIFACT_LOCATION=/mlflow/artifacts
+      - PYTHONUNBUFFERED=1
+      # Production settings
+      - API_WORKERS=${API_WORKERS:-4}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - ./models:/app/models
+      - mlflow-artifacts:/mlflow/artifacts
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - stock-prediction-network
+    depends_on:
+      mlflow-server:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+    driver: local
+  mlflow-artifacts:
+    driver: local
+
+networks:
+  stock-prediction-network:
+    driver: bridge

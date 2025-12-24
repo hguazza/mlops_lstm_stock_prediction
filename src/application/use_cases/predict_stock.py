@@ -115,7 +115,7 @@ class PredictStockPriceUseCase:
             # Step 3: Train model
             self.logger.info("step_2_training_model", symbol=symbol)
             history = self.prediction_service.train_model(
-                data=data, target_column="Close", verbose=False
+                data=data, target_column="Close", verbose=False, symbol=symbol
             )
 
             self.logger.info(
@@ -152,10 +152,16 @@ class PredictStockPriceUseCase:
                     interval=confidence_interval,
                 )
 
-            # Step 7: Get model metadata
+                # Step 7: Get model metadata
             model_info = self.prediction_service.get_model_info()
 
-            # Step 8: Create and return response
+            # Step 8: Get MLflow run info (uses last run_id since run may have ended)
+            mlflow_run_id = None
+            if self.prediction_service.mlflow_service:
+                mlflow_run_id = self.prediction_service.mlflow_service.get_last_run_id()
+                self.logger.info("retrieved_mlflow_run_id", run_id=mlflow_run_id)
+
+            # Step 9: Create and return response
             response = PredictionResponse(
                 symbol=symbol.upper(),
                 predicted_price=predicted_price,
@@ -165,10 +171,14 @@ class PredictStockPriceUseCase:
                 model_version=f"{model_info['config']['hidden_size']}-{model_info['config']['num_layers']}",
             )
 
+            # Store run_id in the response object for access by routers
+            response._mlflow_run_id = mlflow_run_id
+
             self.logger.info(
                 "predict_stock_price_completed",
                 symbol=symbol,
                 predicted_price=predicted_price,
+                mlflow_run_id=mlflow_run_id,
             )
 
             return response

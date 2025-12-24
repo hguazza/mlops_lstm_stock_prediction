@@ -308,6 +308,30 @@ MODEL_NUM_LAYERS=2
 MODEL_EPOCHS=100
 ```
 
+### Configuração de Hosts Permitidos (MLflow UI)
+
+Para segurança, o MLflow UI restringe quais hosts podem acessá-lo. Configure a variável de ambiente `MLFLOW_ALLOWED_HOSTS` de acordo com seu ambiente.
+
+**Desenvolvimento (local):**
+```bash
+MLFLOW_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
+```
+
+Permite acesso via:
+- http://localhost:5000
+- http://127.0.0.1:5000
+
+**Produção (rede interna):**
+
+Configure com os IPs/hostnames específicos da sua rede interna:
+```bash
+MLFLOW_ALLOWED_HOSTS=10.0.1.50,mlflow.internal.company.com,192.168.100.10
+```
+
+Substitua pelos IPs/hostnames reais da sua infraestrutura. Se estiver atrás de um proxy reverso (nginx, traefik), adicione também o hostname do proxy.
+
+**Importante:** Nunca use `*` (wildcard) em produção, pois isso permite qualquer host e expõe sua aplicação a ataques de DNS rebinding.
+
 ## MLflow Integration
 
 ### View Experiments
@@ -399,9 +423,83 @@ make test
 
 MIT License - see [LICENSE](LICENSE) for details.
 
+## Production Deployment
+
+### Quick Production Setup
+
+For production environments, use PostgreSQL instead of SQLite to avoid database concurrency issues:
+
+```bash
+# 1. Create production environment file
+cp docs/production_deployment.md .
+# Edit .env.production with your settings
+
+# 2. Start production services (PostgreSQL + MLflow + API)
+make prod-up
+
+# 3. Check health
+make prod-health
+
+# 4. View logs
+make prod-logs
+
+# 5. Test training
+make prod-test-train
+```
+
+**Why PostgreSQL in Production?**
+
+SQLite has limitations with concurrent writes, causing issues when both API and MLflow UI try to write simultaneously. PostgreSQL solves this with:
+- ✅ Full ACID compliance with concurrent writes
+- ✅ Better performance under load
+- ✅ Easier backups and replication
+- ✅ Industry-standard for production databases
+
+### Production Architecture
+
+```
+Load Balancer (Nginx/Traefik)
+         ↓
+    ┌────────────┬─────────────┐
+    ↓            ↓             ↓
+   API      MLflow Server  PostgreSQL
+(4 workers)   (Tracking)   (Database)
+```
+
+**Key Differences from Development:**
+
+| Feature | Development (SQLite) | Production (PostgreSQL) |
+|---------|---------------------|-------------------------|
+| Database | Single file | Dedicated server |
+| Concurrency | Limited | Full support |
+| MLflow UI | May conflict with API | Separate service |
+| Scalability | Single instance | Horizontal scaling |
+| Backups | Manual file copy | pg_dump / streaming |
+
+### Production Commands
+
+```bash
+make prod-build         # Build production image
+make prod-up            # Start all services
+make prod-down          # Stop services
+make prod-logs          # View logs
+make prod-health        # Check system health
+make prod-backup-db     # Backup database
+make prod-list-models   # List registered models
+```
+
+### Cloud Deployment
+
+See [Production Deployment Guide](docs/production_deployment.md) for detailed instructions on deploying to:
+- AWS (ECS/Fargate + RDS)
+- GCP (Cloud Run + Cloud SQL)
+- Azure (Container Instances + Azure Database)
+- Kubernetes (any cloud)
+
 ## Support
 
 - **Documentation:** [docs/](docs/)
+- **Production Guide:** [docs/production_deployment.md](docs/production_deployment.md)
 - **API Reference:** http://localhost:8000/docs
 - **MLflow UI:** http://localhost:5000
 - **Issues:** GitHub Issues
