@@ -15,6 +15,7 @@ from src.presentation.api.middleware.metrics import (
     PrometheusMiddleware,
     metrics_endpoint,
 )
+
 from src.presentation.api.routers import health, models, multivariate, predict, train
 
 # Configure structlog
