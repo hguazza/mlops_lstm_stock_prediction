@@ -212,8 +212,8 @@ class TestMultivariateEndpointErrors:
 
         response = client.post("/api/v1/multivariate/train-predict", json=request_data)
 
-        # Should return error (either 400 or 500 depending on where validation fails)
-        assert response.status_code in [400, 500]
+        # Should return error (422 for validation errors, 400/500 for other failures)
+        assert response.status_code in [400, 422, 500]
 
     def test_missing_required_fields(self, client):
         """Test validation error for missing required fields."""
