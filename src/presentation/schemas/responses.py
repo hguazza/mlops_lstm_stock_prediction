@@ -260,3 +260,168 @@ class ModelInfoResponse(BaseModel):
                 },
             }
         }
+
+
+class MultivariatePredictionDetails(BaseModel):
+    """Prediction details for multivariate model."""
+
+    target_ticker: str = Field(..., description="Target ticker symbol")
+    input_tickers: List[str] = Field(
+        ..., description="Input ticker symbols used as features"
+    )
+    predicted_return_pct: float = Field(
+        ..., description="Predicted return in percentage (e.g., 2.5 = +2.5%)"
+    )
+    confidence_interval: ConfidenceInterval = Field(
+        ..., description="Confidence interval for prediction"
+    )
+    forecast_horizon_days: int = Field(..., description="Forecast horizon in days")
+    prediction_timestamp: datetime = Field(..., description="When prediction was made")
+    features_used: List[str] = Field(
+        ...,
+        description="List of feature names (e.g., ['META_return', 'META_rsi', ...])",
+    )
+
+
+class DirectionalMetrics(BaseModel):
+    """Metrics for directional accuracy."""
+
+    directional_accuracy: float = Field(
+        ..., description="Percentage of correct direction predictions (0-1)"
+    )
+    sharpe_ratio: Optional[float] = Field(
+        default=None, description="Sharpe ratio if calculated"
+    )
+
+
+class MultivariateTrainMetrics(BaseModel):
+    """Training metrics for multivariate model."""
+
+    best_val_loss: float = Field(..., description="Best validation loss achieved")
+    final_train_loss: float = Field(..., description="Final training loss")
+    final_val_loss: float = Field(..., description="Final validation loss")
+    mae: float = Field(..., description="Mean Absolute Error on validation set")
+    rmse: float = Field(..., description="Root Mean Squared Error on validation set")
+    directional_accuracy: Optional[float] = Field(
+        default=None, description="Directional accuracy if calculated"
+    )
+    epochs_trained: int = Field(..., description="Number of epochs trained")
+    training_time_seconds: float = Field(
+        ..., description="Total training time in seconds"
+    )
+
+
+class MultivariateTrainPredictResponse(BaseModel):
+    """Response for multivariate train-predict endpoint."""
+
+    status: StatusEnum = Field(default=StatusEnum.SUCCESS)
+    model_id: str = Field(..., description="Trained model identifier")
+    mlflow_run_id: Optional[str] = Field(default=None, description="MLflow run ID")
+    training_metrics: MultivariateTrainMetrics = Field(
+        ..., description="Training performance metrics"
+    )
+    prediction: MultivariatePredictionDetails = Field(
+        ..., description="Prediction details"
+    )
+    model_info: ModelInfo = Field(..., description="Model metadata")
+    validation_results: Optional[DirectionalMetrics] = Field(
+        default=None, description="Validation results if available"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "success",
+                "model_id": "multivariate_predictor_NVDA:1",
+                "mlflow_run_id": "abc123def456",
+                "training_metrics": {
+                    "best_val_loss": 0.0156,
+                    "final_train_loss": 0.0142,
+                    "final_val_loss": 0.0168,
+                    "mae": 0.0234,
+                    "rmse": 0.0312,
+                    "directional_accuracy": 0.64,
+                    "epochs_trained": 45,
+                    "training_time_seconds": 120.5,
+                },
+                "prediction": {
+                    "target_ticker": "NVDA",
+                    "input_tickers": ["META", "GOOG", "TSLA", "BABA"],
+                    "predicted_return_pct": 2.34,
+                    "confidence_interval": {
+                        "lower": 0.5,
+                        "upper": 4.2,
+                        "confidence_level": 0.95,
+                    },
+                    "forecast_horizon_days": 5,
+                    "prediction_timestamp": "2024-12-29T10:30:00Z",
+                    "features_used": [
+                        "META_return",
+                        "META_rsi",
+                        "META_macd",
+                        "GOOG_return",
+                        "GOOG_rsi",
+                    ],
+                },
+                "model_info": {
+                    "model_id": "multivariate_predictor_NVDA:1",
+                    "symbol": "NVDA",
+                    "trained_at": "2024-12-29T10:30:00Z",
+                    "data_rows": 252,
+                    "config": {
+                        "num_features": 24,
+                        "lookback": 60,
+                        "hidden_size_1": 128,
+                        "hidden_size_2": 64,
+                    },
+                    "mlflow_run_id": "abc123def456",
+                },
+                "validation_results": {
+                    "directional_accuracy": 0.64,
+                    "sharpe_ratio": 1.2,
+                },
+            }
+        }
+
+
+class MultivariatePredictionResponse(BaseModel):
+    """Response for multivariate predict-only endpoint."""
+
+    status: StatusEnum = Field(default=StatusEnum.SUCCESS)
+    prediction: MultivariatePredictionDetails = Field(
+        ..., description="Prediction details"
+    )
+    model_info: ModelInfo = Field(..., description="Model metadata")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "success",
+                "prediction": {
+                    "target_ticker": "NVDA",
+                    "input_tickers": ["META", "GOOG", "TSLA", "BABA"],
+                    "predicted_return_pct": 2.34,
+                    "confidence_interval": {
+                        "lower": 0.5,
+                        "upper": 4.2,
+                        "confidence_level": 0.95,
+                    },
+                    "forecast_horizon_days": 5,
+                    "prediction_timestamp": "2024-12-29T10:30:00Z",
+                    "features_used": [
+                        "META_return",
+                        "META_rsi",
+                        "META_macd",
+                        "GOOG_return",
+                    ],
+                },
+                "model_info": {
+                    "model_id": "multivariate_predictor_NVDA:1",
+                    "symbol": "NVDA",
+                    "trained_at": "2024-12-29T10:00:00Z",
+                    "data_rows": 252,
+                    "config": {"num_features": 24, "lookback": 60},
+                    "model_stage": "Production",
+                },
+            }
+        }

@@ -15,7 +15,7 @@ from src.presentation.api.middleware.metrics import (
     PrometheusMiddleware,
     metrics_endpoint,
 )
-from src.presentation.api.routers import health, models, predict, train
+from src.presentation.api.routers import health, models, multivariate, predict, train
 
 # Configure structlog
 structlog.configure(
@@ -114,6 +114,7 @@ async def log_requests(request: Request, call_next):
 app.include_router(health.router, prefix="/api/v1")
 app.include_router(train.router, prefix="/api/v1")
 app.include_router(predict.router, prefix="/api/v1")
+app.include_router(multivariate.router, prefix="/api/v1")
 app.include_router(models.router, prefix="/api/v1")
 
 

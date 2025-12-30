@@ -1,6 +1,7 @@
 """Data service - Orchestrates data fetching and preprocessing."""
 
-from typing import Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Dict, List, Optional
 
 import pandas as pd
 import structlog
@@ -220,3 +221,202 @@ class DataService:
             raise DataFetchError(
                 f"Failed to get latest price for {symbol}: {str(e)}"
             ) from e
+
+    def fetch_multiple_tickers(
+        self,
+        tickers: List[str],
+        periods: int = 252,
+        validate: bool = True,
+        align_dates: bool = True,
+    ) -> Dict[str, pd.DataFrame]:
+        """
+        Fetch data for multiple tickers in parallel.
+
+        This method fetches data for multiple tickers simultaneously using
+        ThreadPoolExecutor for improved performance. All tickers are aligned
+        to have the same date range (intersection of all dates).
+
+        Args:
+            tickers: List of stock ticker symbols
+            periods: Number of days to fetch (default: 252, ~1 trading year)
+            validate: Whether to validate data with Pandera
+            align_dates: Whether to align all tickers to common date range
+
+        Returns:
+            Dictionary mapping ticker symbols to DataFrames
+
+        Raises:
+            DataFetchError: If fetching fails for any ticker
+
+        Example:
+            >>> service = DataService()
+            >>> data = service.fetch_multiple_tickers(['AAPL', 'GOOGL', 'MSFT'])
+            >>> print(data['AAPL'].head())
+        """
+        self.logger.info(
+            "fetching_multiple_tickers",
+            tickers=tickers,
+            periods=periods,
+            num_tickers=len(tickers),
+        )
+
+        if not tickers:
+            raise DataFetchError("tickers list cannot be empty")
+
+        # Remove duplicates while preserving order
+        unique_tickers = list(dict.fromkeys(tickers))
+        if len(unique_tickers) != len(tickers):
+            self.logger.warning(
+                "duplicate_tickers_removed",
+                original=len(tickers),
+                unique=len(unique_tickers),
+            )
+
+        # Fetch data in parallel
+        ticker_data = {}
+        failed_tickers = []
+
+        with ThreadPoolExecutor(max_workers=min(len(unique_tickers), 10)) as executor:
+            # Submit all fetch tasks
+            future_to_ticker = {
+                executor.submit(
+                    self._fetch_single_ticker_safe,
+                    ticker,
+                    periods,
+                    validate,
+                ): ticker
+                for ticker in unique_tickers
+            }
+
+            # Collect results as they complete
+            for future in as_completed(future_to_ticker):
+                ticker = future_to_ticker[future]
+                try:
+                    data = future.result()
+                    if data is not None:
+                        ticker_data[ticker] = data
+                    else:
+                        failed_tickers.append(ticker)
+                except Exception as e:
+                    self.logger.error(
+                        "ticker_fetch_failed",
+                        ticker=ticker,
+                        error=str(e),
+                    )
+                    failed_tickers.append(ticker)
+
+        # Check if we got data for all tickers
+        if failed_tickers:
+            self.logger.warning(
+                "some_tickers_failed",
+                failed_tickers=failed_tickers,
+                successful=len(ticker_data),
+            )
+
+        if not ticker_data:
+            raise DataFetchError(
+                f"Failed to fetch data for any ticker. Attempted: {tickers}"
+            )
+
+        # Align dates if requested
+        if align_dates and len(ticker_data) > 1:
+            ticker_data = self._align_ticker_dates(ticker_data)
+
+        self.logger.info(
+            "multiple_tickers_fetched",
+            successful_tickers=list(ticker_data.keys()),
+            failed_tickers=failed_tickers,
+        )
+
+        return ticker_data
+
+    def _fetch_single_ticker_safe(
+        self, ticker: str, periods: int, validate: bool
+    ) -> Optional[pd.DataFrame]:
+        """
+        Safely fetch data for a single ticker.
+
+        Returns None if fetch fails instead of raising exception.
+
+        Args:
+            ticker: Stock ticker symbol
+            periods: Number of days to fetch
+            validate: Whether to validate data
+
+        Returns:
+            DataFrame or None if failed
+        """
+        try:
+            return self.data_loader.fetch_latest_data(
+                symbol=ticker,
+                num_days=periods,
+                validate=validate,
+            )
+        except Exception as e:
+            self.logger.error(
+                "single_ticker_fetch_failed",
+                ticker=ticker,
+                error=str(e),
+            )
+            return None
+
+    def _align_ticker_dates(
+        self, ticker_data: Dict[str, pd.DataFrame]
+    ) -> Dict[str, pd.DataFrame]:
+        """
+        Align all tickers to common date range (intersection).
+
+        Ensures all tickers have data for the same dates to prevent
+        misalignment in multivariate models.
+
+        Args:
+            ticker_data: Dictionary of ticker DataFrames
+
+        Returns:
+            Dictionary of aligned DataFrames
+
+        Raises:
+            DataFetchError: If date intersection is too small
+        """
+        if len(ticker_data) < 2:
+            return ticker_data
+
+        # Find common dates (intersection)
+        common_dates = None
+        for ticker, df in ticker_data.items():
+            if common_dates is None:
+                common_dates = set(df.index)
+            else:
+                common_dates = common_dates.intersection(set(df.index))
+
+        if not common_dates:
+            raise DataFetchError(
+                "No overlapping dates found across tickers. "
+                "They may have different trading calendars or data availability."
+            )
+
+        # Check minimum overlap
+        min_required_days = 60
+        if len(common_dates) < min_required_days:
+            raise DataFetchError(
+                f"Insufficient overlapping dates: {len(common_dates)} days. "
+                f"Need at least {min_required_days} days of common data across all tickers."
+            )
+
+        # Sort dates
+        common_dates = sorted(common_dates)
+
+        # Align all DataFrames
+        aligned_data = {}
+        for ticker, df in ticker_data.items():
+            aligned_df = df.loc[common_dates].copy()
+            aligned_data[ticker] = aligned_df
+
+        self.logger.info(
+            "tickers_aligned",
+            num_tickers=len(aligned_data),
+            common_dates=len(common_dates),
+            date_range=f"{common_dates[0]} to {common_dates[-1]}",
+        )
+
+        return aligned_data

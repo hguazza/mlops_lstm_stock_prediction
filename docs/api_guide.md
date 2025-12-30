@@ -48,6 +48,172 @@ Key environment variables:
 
 ## API Endpoints
 
+### Multivariate Prediction Endpoints
+
+#### POST /api/v1/multivariate/train-predict
+
+Train multivariate LSTM model and generate prediction using 4 input tickers.
+
+**Description**: This endpoint implements advanced multivariate time series prediction using multiple stocks as features. It calculates technical indicators (log-returns, RSI, MACD, volatility, volume) for each input ticker and trains an LSTM with temporal attention to predict returns for the target ticker.
+
+**Request Body**:
+```json
+{
+  "input_tickers": ["META", "GOOG", "TSLA", "BABA"],
+  "target_ticker": "NVDA",
+  "lookback": 60,
+  "forecast_horizon": 5,
+  "confidence_level": 0.95,
+  "period": "1y",
+  "config": {
+    "hidden_size": 128,
+    "epochs": 100,
+    "batch_size": 32
+  }
+}
+```
+
+**Parameters**:
+- `input_tickers` (required): Exactly 4 ticker symbols as input features
+- `target_ticker` (required): Target ticker to predict
+- `lookback` (optional): Historical window in days (20-252, default: 60)
+- `forecast_horizon` (optional): Forecast horizon in days (1-30, default: 5)
+- `confidence_level` (optional): Confidence level for intervals (0.80-0.99, default: 0.95)
+- `period` (optional): Historical data period (e.g., "6mo", "1y", "2y", default: "1y")
+- `config` (optional): Model configuration overrides
+
+**Response**:
+```json
+{
+  "status": "success",
+  "model_id": "multivariate_predictor_NVDA",
+  "mlflow_run_id": "abc123",
+  "training_metrics": {
+    "best_val_loss": 0.0156,
+    "mae": 0.0234,
+    "rmse": 0.0312,
+    "directional_accuracy": 0.64,
+    "epochs_trained": 45,
+    "training_time_seconds": 120.5
+  },
+  "prediction": {
+    "target_ticker": "NVDA",
+    "input_tickers": ["META", "GOOG", "TSLA", "BABA"],
+    "predicted_return_pct": 2.34,
+    "confidence_interval": {
+      "lower": 0.5,
+      "upper": 4.2,
+      "confidence_level": 0.95
+    },
+    "forecast_horizon_days": 5,
+    "prediction_timestamp": "2024-12-29T10:30:00Z",
+    "features_used": ["META_return", "META_rsi", "META_macd", ...]
+  },
+  "model_info": {
+    "model_id": "multivariate_predictor_NVDA",
+    "symbol": "NVDA",
+    "trained_at": "2024-12-29T10:30:00Z",
+    "data_rows": 252,
+    "config": {
+      "num_features": 24,
+      "lookback": 60,
+      "hidden_size_1": 128,
+      "hidden_size_2": 64
+    }
+  }
+}
+```
+
+**Features Calculated (per ticker)**:
+1. **Log Returns**: `log(price_t / price_t-1)` for stationarity
+2. **RSI (14 periods)**: Momentum indicator (normalized to [-1, 1])
+3. **MACD Histogram**: Trend change indicator
+4. **Realized Volatility**: 20-day rolling std of returns
+5. **Normalized Volume**: Log-normalized volume relative to 20-day average
+
+**Key Differences from Univariate Model**:
+- Uses 4 stocks as features (24 features total: 4 tickers × 6 indicators)
+- Predicts **returns (%)** instead of absolute prices
+- Uses temporal attention mechanism
+- Provides uncertainty quantification via Monte Carlo Dropout
+
+**Example cURL**:
+```bash
+curl -X POST "http://localhost:8000/api/v1/multivariate/train-predict" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input_tickers": ["AAPL", "MSFT", "GOOGL", "AMZN"],
+    "target_ticker": "META",
+    "lookback": 60,
+    "forecast_horizon": 5,
+    "confidence_level": 0.95,
+    "period": "1y"
+  }'
+```
+
+**Example Python**:
+```python
+import requests
+
+response = requests.post(
+    "http://localhost:8000/api/v1/multivariate/train-predict",
+    json={
+        "input_tickers": ["AAPL", "MSFT", "GOOGL", "AMZN"],
+        "target_ticker": "META",
+        "lookback": 60,
+        "forecast_horizon": 5,
+        "confidence_level": 0.95,
+        "period": "1y",
+    }
+)
+
+data = response.json()
+print(f"Predicted Return: {data['prediction']['predicted_return_pct']:.2f}%")
+print(f"Confidence: [{data['prediction']['confidence_interval']['lower']:.2f}%, "
+      f"{data['prediction']['confidence_interval']['upper']:.2f}%]")
+```
+
+**Interpreting Results**:
+- **Predicted Return**: Expected percentage change (e.g., +2.34% = price expected to increase by 2.34%)
+- **Confidence Interval**: Range of likely outcomes at specified confidence level
+  - Narrow interval (< 3%): Model is confident
+  - Wide interval (> 5%): Model is uncertain, high risk
+- **Directional Accuracy**: Historical % of correct direction predictions (> 60% is good)
+
+**Ticker Selection Best Practices**:
+- Choose **correlated tickers** (same sector or related businesses)
+- Examples:
+  - Tech stocks: AAPL, MSFT, GOOGL, AMZN → Predict META, NVDA, etc.
+  - Semiconductors: AMD, INTC, TSM, AVGO → Predict NVDA
+  - Banks: JPM, BAC, WFC, C → Predict GS
+- Avoid mixing uncorrelated sectors (e.g., tech + energy + pharma)
+
+**Performance Notes**:
+- Training time: ~1-3 minutes depending on data period and config
+- Recommended for timeout: 5 minutes
+- Consider using `"config": {"epochs": 50}` for faster testing
+
+**See Also**:
+- [Multivariate Model Guide](multivariate_model_guide.md) - Detailed technical documentation
+- [Feature Engineering](#feature-engineering) - How features are calculated
+- [Monte Carlo Dropout](#uncertainty-quantification) - How confidence intervals work
+
+---
+
+#### POST /api/v1/multivariate/predict
+
+Predict using pre-trained multivariate model (Not Yet Implemented).
+
+**Status**: 501 Not Implemented
+
+This endpoint will load a pre-trained model from MLflow Registry and generate predictions without retraining. Currently, use `/multivariate/train-predict` instead.
+
+---
+
+### Univariate Prediction Endpoints (Existing)
+
+## API Endpoints
+
 All endpoints are prefixed with `/api/v1`.
 
 ### 1. Health Check
