@@ -1,6 +1,26 @@
 version: "3.8"
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: stock-prediction-postgres
+    environment:
+      POSTGRES_DB: stock_prediction
+      POSTGRES_USER: mlops_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mlops_user -d stock_prediction"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - stock-prediction-network
+
   api:
     build:
       context: .
@@ -13,7 +33,13 @@ services:
     environment:
       - MLFLOW_TRACKING_URI=sqlite:////data/mlflow.db
       - MLFLOW_ARTIFACT_LOCATION=/data/mlruns_artifacts
+      - DATABASE_URL=postgresql+asyncpg://mlops_user:${DB_PASSWORD}@postgres:5432/stock_prediction
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - ENVIRONMENT=production
       - PYTHONUNBUFFERED=1
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - mlflow-data:/data
       - ./models:/app/models
@@ -37,7 +63,6 @@ services:
     environment:
       - MLFLOW_BACKEND_STORE_URI=sqlite:////data/mlflow.db
       - MLFLOW_DEFAULT_ARTIFACT_ROOT=/data/mlruns_artifacts
-      - MLFLOW_ALLOWED_HOSTS=${MLFLOW_ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0}
     volumes:
       - mlflow-data:/data
     command: >
@@ -49,8 +74,7 @@ services:
       --default-artifact-root /data/mlruns_artifacts
       --host 0.0.0.0
       --port 5000
-      --allowed-hosts $${MLFLOW_ALLOWED_HOSTS}
-      --cors-allowed-origins '*'
+      --gunicorn-opts '--timeout 120'
       "
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000"]
@@ -66,6 +90,8 @@ services:
 
 volumes:
   mlflow-data:
+    driver: local
+  postgres-data:
     driver: local
 
 networks:

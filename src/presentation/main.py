@@ -1,10 +1,12 @@
 """FastAPI application main module."""
 
 import structlog
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError as PydanticValidationError
 
+from src.domain.auth.security import get_current_active_user
+from src.infrastructure.database.models import User
 from src.presentation.api.errors import (
     APIError,
     api_error_handler,
@@ -16,7 +18,14 @@ from src.presentation.api.middleware.metrics import (
     metrics_endpoint,
 )
 
-from src.presentation.api.routers import health, models, multivariate, predict, train
+from src.presentation.api.routers import (
+    auth,
+    health,
+    models,
+    multivariate,
+    predict,
+    train,
+)
 
 # Configure structlog
 structlog.configure(
@@ -30,15 +39,58 @@ structlog.configure(
 
 logger = structlog.get_logger(__name__)
 
-# Create FastAPI app
+# Create FastAPI app with security configuration
 app = FastAPI(
     title="Stock Price Prediction API",
-    description="LSTM-based stock price prediction API with MLflow tracking",
+    description="LSTM-based stock price prediction API with MLflow tracking and JWT authentication",
     version="0.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/api/v1/openapi.json",
+    swagger_ui_parameters={
+        "persistAuthorization": True,
+    },
 )
+
+# Configure OpenAPI security scheme
+app.openapi_schema = None  # Reset to regenerate with security
+
+
+def custom_openapi():
+    """Custom OpenAPI schema with JWT security."""
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    from fastapi.openapi.utils import get_openapi
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+
+    # Add security scheme
+    openapi_schema["components"]["securitySchemes"] = {
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "Enter your JWT token in the format: Bearer <token>",
+        }
+    }
+
+    # Apply security to all endpoints except auth endpoints
+    for path in openapi_schema["paths"]:
+        for method in openapi_schema["paths"][path]:
+            if not path.startswith("/api/v1/auth"):
+                openapi_schema["paths"][path][method]["security"] = [{"BearerAuth": []}]
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 # Add CORS middleware
 app.add_middleware(
@@ -112,6 +164,7 @@ async def log_requests(request: Request, call_next):
 
 
 # Include routers with /api/v1 prefix
+app.include_router(auth.router, prefix="/api/v1")  # Auth router (no auth required)
 app.include_router(health.router, prefix="/api/v1")
 app.include_router(train.router, prefix="/api/v1")
 app.include_router(predict.router, prefix="/api/v1")
@@ -121,8 +174,10 @@ app.include_router(models.router, prefix="/api/v1")
 
 # Prometheus metrics endpoint
 @app.get("/metrics")
-async def metrics():
-    """Expose Prometheus metrics."""
+async def metrics(
+    current_user: User = Depends(get_current_active_user),
+):
+    """Expose Prometheus metrics (protected)."""
     return await metrics_endpoint()
 
 

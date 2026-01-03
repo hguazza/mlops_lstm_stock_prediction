@@ -10,6 +10,8 @@ from src.application.use_cases.predict_multivariate import (
     PredictMultivariateUseCase,
     ValidationError,
 )
+from src.domain.auth.security import get_current_active_user
+from src.infrastructure.database.models import User
 from src.presentation.schemas.requests import (
     MultivariatePredictRequest,
     MultivariateTrainPredictRequest,
@@ -46,6 +48,7 @@ def get_multivariate_use_case() -> PredictMultivariateUseCase:
 @router.post("/train-predict", response_model=MultivariateTrainPredictResponse)
 async def train_and_predict_multivariate(
     request: MultivariateTrainPredictRequest,
+    current_user: User = Depends(get_current_active_user),
     use_case: PredictMultivariateUseCase = Depends(get_multivariate_use_case),
 ) -> MultivariateTrainPredictResponse:
     """
@@ -239,6 +242,7 @@ async def train_and_predict_multivariate(
 @router.post("/predict", response_model=MultivariatePredictionResponse)
 async def predict_multivariate(
     request: MultivariatePredictRequest,
+    current_user: User = Depends(get_current_active_user),
     use_case: PredictMultivariateUseCase = Depends(get_multivariate_use_case),
 ) -> MultivariatePredictionResponse:
     """

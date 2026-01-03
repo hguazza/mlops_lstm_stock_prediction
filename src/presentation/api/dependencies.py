@@ -1,6 +1,9 @@
 """FastAPI dependency injection."""
 
 from functools import lru_cache
+from typing import AsyncGenerator
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.application.services import (
     create_data_service,
@@ -10,6 +13,11 @@ from src.application.services.data_service import DataService
 from src.application.services.prediction_service import PredictionService
 from src.application.use_cases.fetch_data import FetchStockDataUseCase
 from src.application.use_cases.predict_stock import PredictStockPriceUseCase
+from src.infrastructure.database.connection import get_async_session
+from src.infrastructure.database.repositories import (
+    RefreshTokenRepository,
+    UserRepository,
+)
 from src.infrastructure.mlflow.mlflow_service import MLflowService
 
 
@@ -75,3 +83,45 @@ def get_predict_stock_price_use_case() -> PredictStockPriceUseCase:
         data_service=data_service,
         prediction_service=prediction_service,
     )
+
+
+# Database session dependency (re-exported from connection module)
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Get database session dependency.
+
+    Yields:
+        AsyncSession: Database session
+    """
+    async for session in get_async_session():
+        yield session
+
+
+def get_user_repository(
+    session: AsyncSession,
+) -> UserRepository:
+    """
+    Get UserRepository with injected session.
+
+    Args:
+        session: Database session
+
+    Returns:
+        UserRepository instance
+    """
+    return UserRepository(session)
+
+
+def get_refresh_token_repository(
+    session: AsyncSession,
+) -> RefreshTokenRepository:
+    """
+    Get RefreshTokenRepository with injected session.
+
+    Args:
+        session: Database session
+
+    Returns:
+        RefreshTokenRepository instance
+    """
+    return RefreshTokenRepository(session)

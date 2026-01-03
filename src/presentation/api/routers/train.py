@@ -7,6 +7,8 @@ import structlog
 from fastapi import APIRouter, Depends
 
 from src.application.use_cases.predict_stock import PredictStockPriceUseCase
+from src.domain.auth.security import get_current_active_user
+from src.infrastructure.database.models import User
 from src.infrastructure.model import ModelConfig
 from src.presentation.api.dependencies import get_predict_stock_price_use_case
 from src.presentation.api.errors import TrainingError
@@ -20,6 +22,7 @@ logger = structlog.get_logger(__name__)
 @router.post("", response_model=TrainResponse, status_code=201)
 async def train_model(
     request: TrainRequest,
+    current_user: User = Depends(get_current_active_user),
     use_case: PredictStockPriceUseCase = Depends(get_predict_stock_price_use_case),
 ) -> TrainResponse:
     """

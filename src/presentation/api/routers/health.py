@@ -3,8 +3,10 @@
 from datetime import datetime, timezone
 
 import structlog
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from src.domain.auth.security import get_current_active_user
+from src.infrastructure.database.models import User
 from src.presentation.api.dependencies import get_mlflow_service
 from src.presentation.schemas.common import HealthResponse, StatusEnum
 
@@ -13,7 +15,9 @@ logger = structlog.get_logger(__name__)
 
 
 @router.get("/health", response_model=HealthResponse)
-async def health_check() -> HealthResponse:
+async def health_check(
+    current_user: User = Depends(get_current_active_user),
+) -> HealthResponse:
     """
     Health check endpoint.
 

@@ -7,6 +7,8 @@ import mlflow
 import structlog
 from fastapi import APIRouter, Depends, Path
 
+from src.domain.auth.security import get_current_active_user
+from src.infrastructure.database.models import User
 from src.presentation.api.dependencies import get_mlflow_service
 from src.presentation.api.errors import ModelNotFoundError
 from src.presentation.schemas.responses import (
@@ -23,6 +25,7 @@ logger = structlog.get_logger(__name__)
 
 @router.get("", response_model=ModelsListResponse)
 async def list_models(
+    current_user: User = Depends(get_current_active_user),
     mlflow_service=Depends(get_mlflow_service),
 ) -> ModelsListResponse:
     """
@@ -108,6 +111,7 @@ async def list_models(
 @router.get("/{symbol}/latest", response_model=ModelInfoResponse)
 async def get_latest_model_info(
     symbol: str = Path(..., description="Stock symbol"),
+    current_user: User = Depends(get_current_active_user),
     mlflow_service=Depends(get_mlflow_service),
 ) -> ModelInfoResponse:
     """

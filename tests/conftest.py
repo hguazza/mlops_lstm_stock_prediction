@@ -3,8 +3,11 @@
 import numpy as np
 import pandas as pd
 import pytest
+import pytest_asyncio
+from httpx import AsyncClient, ASGITransport
 
 from src.infrastructure.model import ModelConfig
+from src.presentation.main import app
 
 
 @pytest.fixture
@@ -114,3 +117,32 @@ def small_stock_data():
 
     data.index.name = "Date"
     return data
+
+
+@pytest_asyncio.fixture
+async def client():
+    """
+    Create AsyncClient for API integration tests.
+
+    Returns:
+        AsyncClient for making HTTP requests to the API
+    """
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
+        yield ac
+
+
+@pytest_asyncio.fixture
+async def db_session():
+    """
+    Create database session for tests.
+
+    Returns:
+        AsyncSession for database operations
+    """
+    from src.infrastructure.database.connection import async_session_maker
+
+    async with async_session_maker() as session:
+        yield session
+        await session.rollback()  # Rollback any changes after test

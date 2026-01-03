@@ -1,18 +1,18 @@
 version: "3.8"
 
 services:
-  # PostgreSQL database for MLflow
+  # PostgreSQL database for MLflow and Authentication
   postgres:
-    image: postgres:15-alpine
-    container_name: mlflow-postgres
+    image: postgres:16-alpine
+    container_name: stock-prediction-postgres
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-mlflow}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mlflow_password}
-      POSTGRES_DB: ${POSTGRES_DB:-mlflow}
+      POSTGRES_USER: ${POSTGRES_USER:-mlops_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-stock_prediction}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mlflow"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mlops_user}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -27,7 +27,7 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - MLFLOW_BACKEND_STORE_URI=postgresql://${POSTGRES_USER:-mlflow}:${POSTGRES_PASSWORD:-mlflow_password}@postgres:5432/${POSTGRES_DB:-mlflow}
+      - MLFLOW_BACKEND_STORE_URI=postgresql://${POSTGRES_USER:-mlops_user}:${DB_PASSWORD}@postgres:5432/mlflow
       - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
       - MLFLOW_ALLOWED_HOSTS=${MLFLOW_ALLOWED_HOSTS:-*}
     volumes:
@@ -37,7 +37,7 @@ services:
       apt-get update && apt-get install -y postgresql-client &&
       pip install mlflow psycopg2-binary &&
       mlflow server
-      --backend-store-uri postgresql://${POSTGRES_USER:-mlflow}:${POSTGRES_PASSWORD:-mlflow_password}@postgres:5432/${POSTGRES_DB:-mlflow}
+      --backend-store-uri postgresql://${POSTGRES_USER:-mlops_user}:${DB_PASSWORD}@postgres:5432/mlflow
       --default-artifact-root /mlflow/artifacts
       --host 0.0.0.0
       --port 5000
@@ -68,6 +68,9 @@ services:
       # Use PostgreSQL instead of SQLite
       - MLFLOW_TRACKING_URI=http://mlflow-server:5000
       - MLFLOW_ARTIFACT_LOCATION=/mlflow/artifacts
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-mlops_user}:${DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-stock_prediction}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - ENVIRONMENT=production
       - PYTHONUNBUFFERED=1
       # Production settings
       - API_WORKERS=${API_WORKERS:-4}

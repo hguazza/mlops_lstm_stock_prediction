@@ -7,6 +7,28 @@ echo "Starting Stock Prediction API..."
 mkdir -p /data
 chmod 755 /data
 
+# Function to initialize authentication database
+init_auth_db() {
+    echo "Initializing authentication database..."
+    echo "Database URL: $DATABASE_URL"
+
+    python -c "
+import asyncio
+from src.infrastructure.database.models import Base
+from src.infrastructure.database.connection import engine
+
+async def create_tables():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    print('✓ Authentication tables created successfully!')
+
+try:
+    asyncio.run(create_tables())
+except Exception as e:
+    print(f'⚠ Warning: Could not create auth tables: {e}')
+"
+}
+
 # Function to initialize MLflow database
 init_mlflow() {
     echo "Initializing MLflow database..."
@@ -51,6 +73,10 @@ else
     echo "No MLflow database found. Initializing for the first time..."
     init_mlflow
 fi
+
+# Initialize authentication database
+echo "Checking authentication database..."
+init_auth_db
 
 # Execute the main command
 exec "$@"

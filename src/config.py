@@ -1,7 +1,31 @@
 """Centralized application configuration."""
 
 import os
+import secrets
 from dataclasses import dataclass
+
+
+@dataclass
+class AuthSettings:
+    """Authentication and JWT settings."""
+
+    secret_key: str
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
+
+
+@dataclass
+class DatabaseSettings:
+    """Database connection settings."""
+
+    url: str
+    echo: bool = False
+
+    @property
+    def is_sqlite(self) -> bool:
+        """Check if using SQLite database."""
+        return self.url.startswith("sqlite")
 
 
 @dataclass
@@ -47,6 +71,8 @@ class AppConfig:
     Centralizes all configuration with environment variable overrides.
     """
 
+    auth: AuthSettings
+    database: DatabaseSettings
     mlflow: MLflowSettings
     model: ModelSettings
     data: DataSettings
@@ -58,6 +84,11 @@ class AppConfig:
         Create configuration from environment variables.
 
         Environment variables:
+            JWT_SECRET_KEY: JWT secret key for token signing
+            JWT_ALGORITHM: JWT algorithm (default: HS256)
+            JWT_ACCESS_TOKEN_EXPIRE_MINUTES: Access token expiration in minutes
+            JWT_REFRESH_TOKEN_EXPIRE_DAYS: Refresh token expiration in days
+            DATABASE_URL: Database connection string
             MLFLOW_TRACKING_URI: MLflow tracking URI
             MLFLOW_EXPERIMENT_NAME: Experiment name
             MODEL_HIDDEN_SIZE: LSTM hidden size
@@ -67,6 +98,29 @@ class AppConfig:
         Returns:
             AppConfig instance
         """
+        # Generate a random secret key if not provided (for development only)
+        jwt_secret = os.getenv("JWT_SECRET_KEY")
+        if not jwt_secret:
+            jwt_secret = secrets.token_hex(32)
+            if os.getenv("ENVIRONMENT", "development") == "production":
+                raise ValueError("JWT_SECRET_KEY must be set in production environment")
+
+        auth = AuthSettings(
+            secret_key=jwt_secret,
+            algorithm=os.getenv("JWT_ALGORITHM", "HS256"),
+            access_token_expire_minutes=int(
+                os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "30")
+            ),
+            refresh_token_expire_days=int(
+                os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "7")
+            ),
+        )
+
+        database = DatabaseSettings(
+            url=os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./auth.db"),
+            echo=os.getenv("DATABASE_ECHO", "false").lower() == "true",
+        )
+
         mlflow = MLflowSettings(
             tracking_uri=os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db"),
             experiment_name=os.getenv(
@@ -99,6 +153,8 @@ class AppConfig:
         environment = os.getenv("ENVIRONMENT", "development")
 
         return cls(
+            auth=auth,
+            database=database,
             mlflow=mlflow,
             model=model,
             data=data,
