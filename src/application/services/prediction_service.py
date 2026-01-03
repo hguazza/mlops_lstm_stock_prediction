@@ -85,6 +85,31 @@ class PredictionService:
         )
 
         # Start MLflow run if service is available
+        # #region agent log
+        import json
+        import time
+
+        with open("/data/debug.log", "a") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "location": "prediction_service.py:87",
+                        "message": "Checking MLflow service",
+                        "data": {
+                            "mlflow_service_exists": self.mlflow_service is not None,
+                            "mlflow_service_type": type(self.mlflow_service).__name__
+                            if self.mlflow_service
+                            else "None",
+                        },
+                        "timestamp": time.time() * 1000,
+                        "sessionId": "debug-session",
+                        "runId": "initial",
+                        "hypothesisId": "A_C",
+                    }
+                )
+                + "\n"
+            )
+        # #endregion
         if self.mlflow_service:
             try:
                 run_name = (
@@ -102,8 +127,45 @@ class PredictionService:
 
                 self.mlflow_service.start_run(run_name=run_name, tags=tags)
                 self.mlflow_service.log_params(self.config.to_dict())
+                # #region agent log
+                with open("/data/debug.log", "a") as f:
+                    f.write(
+                        json.dumps(
+                            {
+                                "location": "prediction_service.py:104",
+                                "message": "MLflow run started and params logged",
+                                "data": {"run_name": run_name},
+                                "timestamp": time.time() * 1000,
+                                "sessionId": "debug-session",
+                                "runId": "initial",
+                                "hypothesisId": "C_D",
+                            }
+                        )
+                        + "\n"
+                    )
+                # #endregion
                 self.logger.info("mlflow_tracking_started", run_name=run_name)
             except Exception as e:
+                # #region agent log
+                with open("/data/debug.log", "a") as f:
+                    f.write(
+                        json.dumps(
+                            {
+                                "location": "prediction_service.py:107",
+                                "message": "MLflow start/log_params exception caught",
+                                "data": {
+                                    "error": str(e),
+                                    "error_type": type(e).__name__,
+                                },
+                                "timestamp": time.time() * 1000,
+                                "sessionId": "debug-session",
+                                "runId": "initial",
+                                "hypothesisId": "C_D",
+                            }
+                        )
+                        + "\n"
+                    )
+                # #endregion
                 self.logger.warning("mlflow_start_failed", error=str(e))
 
         try:
@@ -113,10 +175,51 @@ class PredictionService:
                     return
 
                 event = kwargs.get("event")
+                # #region agent log
+                with open("/data/debug.log", "a") as f:
+                    f.write(
+                        json.dumps(
+                            {
+                                "location": "prediction_service.py:116",
+                                "message": "MLflow callback invoked",
+                                "data": {
+                                    "event": event,
+                                    "kwargs_keys": list(kwargs.keys()),
+                                },
+                                "timestamp": time.time() * 1000,
+                                "sessionId": "debug-session",
+                                "runId": "initial",
+                                "hypothesisId": "E",
+                            }
+                        )
+                        + "\n"
+                    )
+                # #endregion
                 if event == "epoch":
                     epoch = kwargs.get("epoch", 0)
                     train_loss = kwargs.get("train_loss", 0.0)
                     val_loss = kwargs.get("val_loss", 0.0)
+                    # #region agent log
+                    with open("/data/debug.log", "a") as f:
+                        f.write(
+                            json.dumps(
+                                {
+                                    "location": "prediction_service.py:121",
+                                    "message": "Logging epoch metrics",
+                                    "data": {
+                                        "epoch": epoch,
+                                        "train_loss": train_loss,
+                                        "val_loss": val_loss,
+                                    },
+                                    "timestamp": time.time() * 1000,
+                                    "sessionId": "debug-session",
+                                    "runId": "initial",
+                                    "hypothesisId": "E",
+                                }
+                            )
+                            + "\n"
+                        )
+                    # #endregion
 
                     self.mlflow_service.log_metrics(
                         {
@@ -212,8 +315,45 @@ class PredictionService:
                     )
 
                     # End run successfully
+                    # #region agent log
+                    with open("/data/debug.log", "a") as f:
+                        f.write(
+                            json.dumps(
+                                {
+                                    "location": "prediction_service.py:215",
+                                    "message": "About to end MLflow run with FINISHED",
+                                    "data": {"model_uri": model_uri},
+                                    "timestamp": time.time() * 1000,
+                                    "sessionId": "debug-session",
+                                    "runId": "initial",
+                                    "hypothesisId": "C",
+                                }
+                            )
+                            + "\n"
+                        )
+                    # #endregion
                     self.mlflow_service.end_run(status="FINISHED")
                 except Exception as e:
+                    # #region agent log
+                    with open("/data/debug.log", "a") as f:
+                        f.write(
+                            json.dumps(
+                                {
+                                    "location": "prediction_service.py:217",
+                                    "message": "MLflow logging/end_run exception",
+                                    "data": {
+                                        "error": str(e),
+                                        "error_type": type(e).__name__,
+                                    },
+                                    "timestamp": time.time() * 1000,
+                                    "sessionId": "debug-session",
+                                    "runId": "initial",
+                                    "hypothesisId": "C_D",
+                                }
+                            )
+                            + "\n"
+                        )
+                    # #endregion
                     self.logger.warning("mlflow_logging_failed", error=str(e))
                     if self.mlflow_service:
                         try:

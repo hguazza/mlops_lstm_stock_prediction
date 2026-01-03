@@ -51,9 +51,7 @@ async def train_model(
     # #region agent log
     import json
 
-    with open(
-        r"c:\Users\Henrique\Dev\mlops_lstm_stock_prediction\.cursor\debug.log", "a"
-    ) as f:
+    with open("/data/debug.log", "a") as f:
         f.write(
             json.dumps(
                 {
@@ -94,9 +92,7 @@ async def train_model(
     periods_days = period_days_map.get(request.period, 365)
     import json
 
-    with open(
-        r"c:\Users\Henrique\Dev\mlops_lstm_stock_prediction\.cursor\debug.log", "a"
-    ) as f:
+    with open("/data/debug.log", "a") as f:
         f.write(
             json.dumps(
                 {
@@ -152,9 +148,7 @@ async def train_model(
         # #region agent log
         import json
 
-        with open(
-            r"c:\Users\Henrique\Dev\mlops_lstm_stock_prediction\.cursor\debug.log", "a"
-        ) as f:
+        with open("/data/debug.log", "a") as f:
             f.write(
                 json.dumps(
                     {
@@ -185,9 +179,7 @@ async def train_model(
         # #region agent log
         import json
 
-        with open(
-            r"c:\Users\Henrique\Dev\mlops_lstm_stock_prediction\.cursor\debug.log", "a"
-        ) as f:
+        with open("/data/debug.log", "a") as f:
             f.write(
                 json.dumps(
                     {
@@ -212,9 +204,7 @@ async def train_model(
         model_info_dict = use_case.prediction_service.get_model_info()
 
         # #region agent log
-        with open(
-            r"c:\Users\Henrique\Dev\mlops_lstm_stock_prediction\.cursor\debug.log", "a"
-        ) as f:
+        with open("/data/debug.log", "a") as f:
             f.write(
                 json.dumps(
                     {
@@ -295,9 +285,7 @@ async def train_model(
         # #region agent log
         import json
 
-        with open(
-            r"c:\Users\Henrique\Dev\mlops_lstm_stock_prediction\.cursor\debug.log", "a"
-        ) as f:
+        with open("/data/debug.log", "a") as f:
             f.write(
                 json.dumps(
                     {

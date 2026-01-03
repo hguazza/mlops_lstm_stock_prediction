@@ -43,7 +43,7 @@ services:
     command: >
       sh -c "
       mkdir -p /data/mlruns_artifacts &&
-      pip install mlflow &&
+      pip install mlflow==3.7.0 &&
       mlflow server
       --backend-store-uri sqlite:////data/mlflow.db
       --default-artifact-root /data/mlruns_artifacts

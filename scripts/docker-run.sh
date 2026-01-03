@@ -5,7 +5,7 @@ echo "🚀 Starting services with docker-compose..."
 docker-compose up -d
 
 echo "⏳ Waiting for services to be healthy..."
-sleep 10
+sleep 50
 
 echo "📊 Services status:"
 docker-compose ps
