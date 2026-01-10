@@ -62,7 +62,7 @@ services:
     ports:
       - "8001:8000"
     env_file:
-      - .env.pre-prod
+      - .env.production
     environment:
       # Use PostgreSQL instead of SQLite
       - MLFLOW_TRACKING_URI=http://mlflow-server:5000
