@@ -5,14 +5,18 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: stock-prediction-postgres
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-mlops_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-stock_prediction}
+      POSTGRES_MULTIPLE_DATABASES: ${POSTGRES_MULTIPLE_DATABASES:-mlflow}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-multiple-databases.sh:/docker-entrypoint-initdb.d/init-multiple-databases.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mlops_user}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mlops_user} -d ${POSTGRES_DB:-stock_prediction}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -25,7 +29,7 @@ services:
     image: python:3.12-slim
     container_name: mlflow-server
     ports:
-      - "5000:5000"
+      - "5002:5000"
     environment:
       - MLFLOW_BACKEND_STORE_URI=postgresql://${POSTGRES_USER:-mlops_user}:${DB_PASSWORD}@postgres:5432/mlflow
       - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
@@ -33,16 +37,9 @@ services:
     volumes:
       - mlflow-artifacts:/mlflow/artifacts
     command: >
-      sh -c "
-      apt-get update && apt-get install -y postgresql-client &&
+      sh -c "apt-get update && apt-get install -y postgresql-client &&
       pip install mlflow psycopg2-binary &&
-      mlflow server
-      --backend-store-uri postgresql://${POSTGRES_USER:-mlops_user}:${DB_PASSWORD}@postgres:5432/mlflow
-      --default-artifact-root /mlflow/artifacts
-      --host 0.0.0.0
-      --port 5000
-      --serve-artifacts
-      "
+      mlflow server --backend-store-uri postgresql://${POSTGRES_USER:-mlops_user}:${DB_PASSWORD}@postgres:5432/mlflow --default-artifact-root /mlflow/artifacts --host 0.0.0.0 --port 5000 --serve-artifacts --allowed-hosts '*'"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
       interval: 30s
@@ -63,7 +60,9 @@ services:
       dockerfile: Dockerfile
     container_name: stock-prediction-api
     ports:
-      - "8000:8000"
+      - "8001:8000"
+    env_file:
+      - .env.pre-prod
     environment:
       # Use PostgreSQL instead of SQLite
       - MLFLOW_TRACKING_URI=http://mlflow-server:5000

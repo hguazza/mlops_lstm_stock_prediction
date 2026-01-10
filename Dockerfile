@@ -62,7 +62,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 # Set environment variables
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
-    MLFLOW_TRACKING_URI=sqlite:///data/mlflow.db
+    MLFLOW_TRACKING_URI=sqlite:////data/mlflow.db
 
 # Set entrypoint
 ENTRYPOINT ["/docker-entrypoint.sh"]

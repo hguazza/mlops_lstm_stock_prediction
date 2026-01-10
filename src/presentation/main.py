@@ -80,10 +80,12 @@ def custom_openapi():
         }
     }
 
-    # Apply security to all endpoints except auth endpoints
+    # Apply security to all endpoints except explicitly public endpoints.
+    # Keep model registry listing endpoints public (no JWT) for easy discovery.
+    public_paths = ["/api/v1/auth", "/api/v1/health", "/api/v1/models", "/metrics"]
     for path in openapi_schema["paths"]:
         for method in openapi_schema["paths"][path]:
-            if not path.startswith("/api/v1/auth"):
+            if not any(path.startswith(public_path) for public_path in public_paths):
                 openapi_schema["paths"][path][method]["security"] = [{"BearerAuth": []}]
 
     app.openapi_schema = openapi_schema
@@ -174,10 +176,8 @@ app.include_router(models.router, prefix="/api/v1")
 
 # Prometheus metrics endpoint
 @app.get("/metrics")
-async def metrics(
-    current_user: User = Depends(get_current_active_user),
-):
-    """Expose Prometheus metrics (protected)."""
+async def metrics():
+    """Expose Prometheus metrics (public - no authentication required)."""
     return await metrics_endpoint()
 
 

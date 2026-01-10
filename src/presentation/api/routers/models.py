@@ -1,14 +1,12 @@
 """Models router - Model registry and information endpoints."""
 
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 import mlflow
 import structlog
 from fastapi import APIRouter, Depends, Path
 
-from src.domain.auth.security import get_current_active_user
-from src.infrastructure.database.models import User
 from src.presentation.api.dependencies import get_mlflow_service
 from src.presentation.api.errors import ModelNotFoundError
 from src.presentation.schemas.responses import (
@@ -22,10 +20,47 @@ from src.presentation.schemas.responses import (
 router = APIRouter(prefix="/models", tags=["models"])
 logger = structlog.get_logger(__name__)
 
+_STOCK_MODEL_PREFIX = "stock_predictor_"
+_MULTIVARIATE_MODEL_PREFIX = "multivariate_predictor_"
+
+
+def _extract_symbol_from_model_name(model_name: str) -> str:
+    """
+    Extract the display symbol from a registered model name.
+
+    Supports both:
+    - stock_predictor_{SYMBOL}
+    - multivariate_predictor_{SYMBOL}
+    """
+    if model_name.startswith(_STOCK_MODEL_PREFIX):
+        return model_name.removeprefix(_STOCK_MODEL_PREFIX)
+    if model_name.startswith(_MULTIVARIATE_MODEL_PREFIX):
+        return model_name.removeprefix(_MULTIVARIATE_MODEL_PREFIX)
+    return model_name
+
+
+def _resolve_model_name_for_symbol(
+    client: mlflow.MlflowClient, symbol: str
+) -> Tuple[Optional[str], List]:
+    """
+    Resolve the actual registered model name + versions list for a symbol.
+
+    Tries both naming conventions (univariate first, then multivariate).
+    Returns (model_name, versions). If not found, (None, []).
+    """
+    candidates = [
+        f"{_STOCK_MODEL_PREFIX}{symbol}",
+        f"{_MULTIVARIATE_MODEL_PREFIX}{symbol}",
+    ]
+    for model_name in candidates:
+        versions = client.search_model_versions(f"name='{model_name}'")
+        if versions:
+            return model_name, versions
+    return None, []
+
 
 @router.get("", response_model=ModelsListResponse)
 async def list_models(
-    current_user: User = Depends(get_current_active_user),
     mlflow_service=Depends(get_mlflow_service),
 ) -> ModelsListResponse:
     """
@@ -48,9 +83,8 @@ async def list_models(
         models: List[ModelSummary] = []
 
         for rm in registered_models:
-            # Extract symbol from model name (format: stock_predictor_SYMBOL)
             model_name = rm.name
-            symbol = model_name.replace("stock_predictor_", "")
+            symbol = _extract_symbol_from_model_name(model_name)
 
             # Get all versions
             versions = client.search_model_versions(f"name='{model_name}'")
@@ -111,7 +145,6 @@ async def list_models(
 @router.get("/{symbol}/latest", response_model=ModelInfoResponse)
 async def get_latest_model_info(
     symbol: str = Path(..., description="Stock symbol"),
-    current_user: User = Depends(get_current_active_user),
     mlflow_service=Depends(get_mlflow_service),
 ) -> ModelInfoResponse:
     """
@@ -130,18 +163,21 @@ async def get_latest_model_info(
     logger.info("get_model_info_request_received", symbol=symbol)
 
     symbol = symbol.upper()
-    model_name = f"stock_predictor_{symbol}"
 
     try:
         client = mlflow.MlflowClient()
 
-        # Get all versions for this model
-        versions = client.search_model_versions(f"name='{model_name}'")
-
-        if not versions:
+        model_name, versions = _resolve_model_name_for_symbol(client, symbol)
+        if not model_name or not versions:
             raise ModelNotFoundError(
                 message=f"No model found for symbol {symbol}",
-                details={"symbol": symbol, "model_name": model_name},
+                details={
+                    "symbol": symbol,
+                    "tried_model_names": [
+                        f"{_STOCK_MODEL_PREFIX}{symbol}",
+                        f"{_MULTIVARIATE_MODEL_PREFIX}{symbol}",
+                    ],
+                },
             )
 
         # Sort and get latest

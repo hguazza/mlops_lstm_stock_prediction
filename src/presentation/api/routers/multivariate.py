@@ -35,10 +35,20 @@ def get_multivariate_use_case() -> PredictMultivariateUseCase:
 
     Creates a new instance with MLflow tracking enabled.
     """
+    from src.config import get_config
+    from src.infrastructure.mlflow import MLflowConfig
     from src.infrastructure.mlflow.mlflow_service import MLflowService
 
     try:
-        mlflow_service = MLflowService()
+        # Get config from environment
+        app_config = get_config()
+        mlflow_config = MLflowConfig(
+            tracking_uri=app_config.mlflow.tracking_uri,
+            experiment_name=app_config.mlflow.experiment_name,
+            artifact_location=app_config.mlflow.artifact_location,
+            enable_autolog=app_config.mlflow.enable_autolog,
+        )
+        mlflow_service = MLflowService(config=mlflow_config)
         return PredictMultivariateUseCase(mlflow_service=mlflow_service)
     except Exception as e:
         logger.warning("mlflow_service_unavailable", error=str(e))
