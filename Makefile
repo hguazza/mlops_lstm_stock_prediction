@@ -145,3 +145,85 @@ db-shell: ## Open PostgreSQL shell
 
 api-shell: ## Open API container shell
 	docker exec -it stock-prediction-api /bin/bash
+
+# ====================
+# Terraform Commands (GCP Infrastructure)
+# ====================
+
+tf-init: ## Initialize Terraform
+	cd terraform && terraform init
+
+tf-import: ## Import existing GCP infrastructure into Terraform
+	cd terraform && ./import-existing.sh
+
+tf-plan: ## Preview Terraform changes
+	cd terraform && terraform plan
+
+tf-apply: ## Apply Terraform changes
+	cd terraform && terraform apply
+
+tf-apply-auto: ## Apply Terraform changes without confirmation
+	cd terraform && terraform apply -auto-approve
+
+tf-output: ## Show Terraform outputs (IPs, URLs, etc.)
+	cd terraform && terraform output
+
+tf-show: ## Show current Terraform state
+	cd terraform && terraform show
+
+tf-state-list: ## List all Terraform-managed resources
+	cd terraform && terraform state list
+
+tf-validate: ## Validate Terraform configuration
+	cd terraform && terraform validate
+
+tf-fmt: ## Format Terraform files
+	cd terraform && terraform fmt
+
+tf-stop: ## Stop the GCP VM instance (saves costs)
+	cd terraform && terraform apply -var="vm_running=false" -auto-approve
+
+tf-start: ## Start the GCP VM instance
+	cd terraform && terraform apply -var="vm_running=true" -auto-approve
+
+tf-destroy: ## Destroy all infrastructure (WARNING: deletes everything!)
+	cd terraform && terraform destroy
+
+tf-refresh: ## Refresh Terraform state to match reality
+	cd terraform && terraform refresh
+
+tf-graph: ## Generate infrastructure graph
+	cd terraform && terraform graph | dot -Tpng > infrastructure-graph.png
+
+# ====================
+# GCP Quick Commands (combines gcloud + terraform)
+# ====================
+
+gcp-status: ## Check GCP VM status
+	gcloud compute instances describe stock-prediction-vm --zone=us-central1-a --format='get(status)'
+
+gcp-ssh: ## SSH into GCP VM
+	gcloud compute ssh stock-prediction-vm --zone=us-central1-a
+
+gcp-logs: ## View GCP VM logs
+	gcloud compute ssh stock-prediction-vm --zone=us-central1-a --command="cd ~/app && docker-compose -f docker-compose.prod.yml logs -f"
+
+gcp-restart-services: ## Restart Docker services on GCP VM
+	gcloud compute ssh stock-prediction-vm --zone=us-central1-a --command="cd ~/app && docker-compose -f docker-compose.prod.yml restart"
+
+gcp-health: ## Check health of services on GCP VM
+	@echo "Checking API health..."
+	@curl -s http://34.61.75.148:8001/api/v1/health | python -m json.tool || echo "❌ API is down"
+	@echo "\nChecking MLflow health..."
+	@curl -s http://34.61.75.148:5002/health || echo "❌ MLflow is down"
+
+gcp-cost-estimate: ## Show estimated GCP costs
+	@echo "Current Infrastructure Costs (Approximate):"
+	@echo "  VM (e2-standard-2): ~\$$50/month (RUNNING)"
+	@echo "  Boot Disk (50GB):   ~\$$2/month"
+	@echo "  Static IP:          ~\$$3/month"
+	@echo "  Traffic:            ~\$$5-20/month"
+	@echo "  --------------------------------"
+	@echo "  Total:              ~\$$60-75/month"
+	@echo ""
+	@echo "💡 To save costs: 'make tf-stop' when not in use (~\$$45/month savings)"
